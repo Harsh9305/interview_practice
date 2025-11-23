@@ -7,11 +7,11 @@ An AI agent designed to help users prepare for job interviews by conducting mock
 *   **Role-Specific Interviews**: Practices for roles like Sales, Engineer, Retail Associate, etc.
 *   **Dynamic Follow-up Questions**: Using LLM to ask relevant follow-up questions.
 *   **Post-Interview Feedback**: Detailed feedback on communication and technical knowledge.
-*   **Interactive CLI**: A clean command-line interface using `rich`.
+*   **Web Interface**: A modern chat interface using `Streamlit`.
 
 ## Design Decisions
 
-*   **Architecture**: The application is split into `InterviewAgent` (logic), `LLMClient` (AI interface), and `main.py` (UI). This separation allows for easier testing and potential future UI upgrades (e.g., to Web).
+*   **Architecture**: The application is split into `InterviewAgent` (logic), `LLMClient` (AI interface), and `app.py` (Web UI). This separation allows for easier testing and modularity.
 *   **State Management**: The agent uses an `Enum` (`InterviewStage`) to track the conversation state (`ROLE_SELECTION`, `INTERVIEW`, `FEEDBACK`). This ensures the agent knows when to switch contexts.
 *   **Prompt Engineering**:
     *   **Role Selection**: The agent asks the LLM to extract the role and confirm it ("Role Confirmed: ...") to deterministically transition to the interview stage.
@@ -35,7 +35,7 @@ An AI agent designed to help users prepare for job interviews by conducting mock
     ```
 2.  Run the application:
     ```bash
-    python src/main.py
+    streamlit run src/app.py
     ```
 
 ## Testing
