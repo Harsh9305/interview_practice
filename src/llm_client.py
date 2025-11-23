@@ -2,6 +2,8 @@ import os
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+from gtts import gTTS
+import tempfile
 
 load_dotenv()
 
@@ -35,6 +37,55 @@ class LLMClient:
             return response.choices[0].message.content
         except Exception as e:
             return f"Error communicating with LLM: {str(e)}"
+
+    def transcribe_audio(self, audio_file) -> str:
+        """
+        Transcribes audio file to text using OpenAI Whisper or Mock.
+        audio_file: file-like object or path
+        """
+        if self.mock:
+            return "This is a mock transcription of the audio."
+
+        try:
+            transcription = self.client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+            return transcription.text
+        except Exception as e:
+            return f"Error transcribing audio: {str(e)}"
+
+    def text_to_speech(self, text: str) -> str:
+        """
+        Converts text to speech. Returns path to the audio file.
+        Uses OpenAI TTS if available, otherwise gTTS.
+        """
+        try:
+            # Create a temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+                output_path = fp.name
+
+            if not self.mock and self.client:
+                try:
+                    response = self.client.audio.speech.create(
+                        model="tts-1",
+                        voice="alloy",
+                        input=text
+                    )
+                    response.stream_to_file(output_path)
+                    return output_path
+                except Exception:
+                    # Fallback to gTTS if OpenAI fails (e.g. quota or model issue)
+                    pass
+
+            # Fallback or Mock
+            tts = gTTS(text=text, lang='en')
+            tts.save(output_path)
+            return output_path
+
+        except Exception as e:
+             print(f"Error in text_to_speech: {e}")
+             return None
 
     def _get_mock_response(self, messages: List[Dict[str, str]]) -> str:
         """

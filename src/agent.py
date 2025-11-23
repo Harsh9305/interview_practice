@@ -17,14 +17,24 @@ class InterviewAgent:
         self.question_count = 0
         self.max_questions = 5  # Default max questions before suggesting feedback
 
-    def start(self) -> str:
-        """Initializes the conversation."""
-        self.history = [
-            {"role": "system", "content": "You are a helpful assistant designed to help users prepare for job interviews. Your goal is to facilitate a mock interview practice session."}
-        ]
-        greeting = "Hello! I'm your Interview Practice Partner. I can help you prepare for job interviews by conducting mock interviews and providing feedback.\n\nTo get started, please tell me what job role you would like to practice for (e.g., Software Engineer, Sales Associate, Retail Manager)."
-        self.history.append({"role": "assistant", "content": greeting})
-        return greeting
+    def start(self, role: Optional[str] = None) -> str:
+        """Initializes the conversation. If role is provided, skips selection."""
+        if role:
+            self.role = role
+            self.stage = InterviewStage.INTERVIEW
+            self.history = [
+                {"role": "system", "content": f"You are an expert interviewer for a {self.role} position. Conduct a professional mock interview. Ask one question at a time. Wait for the user's response before asking the next one. Do not overwhelm the user. If the user's answer is brief or lacks detail, ask a follow-up question. If the user goes off-topic, gently bring them back to the interview. You can end the interview if the user asks to stop or if you have asked {self.max_questions} questions."}
+            ]
+            greeting = f"Hello! I will be your interviewer for the {self.role} position today.\n\nLet's get started. Tell me a little bit about yourself and why you are interested in this role."
+            self.history.append({"role": "assistant", "content": greeting})
+            return greeting
+        else:
+            self.history = [
+                {"role": "system", "content": "You are a helpful assistant designed to help users prepare for job interviews. Your goal is to facilitate a mock interview practice session."}
+            ]
+            greeting = "Hello! I'm your Interview Practice Partner. I can help you prepare for job interviews by conducting mock interviews and providing feedback.\n\nTo get started, please tell me what job role you would like to practice for (e.g., Software Engineer, Sales Associate, Retail Manager)."
+            self.history.append({"role": "assistant", "content": greeting})
+            return greeting
 
     def process_input(self, user_input: str) -> str:
         """Processes user input and returns the agent's response."""
