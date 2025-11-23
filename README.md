@@ -5,6 +5,8 @@ An AI agent designed to help users prepare for job interviews by conducting mock
 ## Features
 
 *   **Role-Specific Interviews**: Practices for roles like Sales, Engineer, Retail Associate, etc.
+*   **Voice & Chat Modes**: Choose between typing or speaking your answers.
+*   **Role Selection**: Select from predefined roles or enter a custom one via the sidebar.
 *   **Dynamic Follow-up Questions**: Using LLM to ask relevant follow-up questions.
 *   **Post-Interview Feedback**: Detailed feedback on communication and technical knowledge.
 *   **Web Interface**: A modern chat interface using `Streamlit`.

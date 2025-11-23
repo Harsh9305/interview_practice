@@ -16,6 +16,7 @@ def initialize_session_state():
         st.session_state.client = client # Store client separately for audio functions
         st.session_state.agent = InterviewAgent(client)
         st.session_state.started = False
+        st.session_state.last_audio_response = None
 
 def display_chat_history():
     if "agent" in st.session_state:
@@ -38,12 +39,12 @@ def process_input(prompt, agent, client, mode):
     with st.chat_message("assistant"):
         st.markdown(response)
 
-        # Play audio if in Voice mode
+        # Generate audio if in Voice mode
         if mode == "Voice":
              with st.spinner("Generating audio..."):
                  audio_path = client.text_to_speech(response)
                  if audio_path:
-                     st.audio(audio_path, autoplay=True)
+                     st.session_state.last_audio_response = audio_path
 
     # Check if finished
     if agent.stage == InterviewStage.FINISHED:
@@ -51,6 +52,7 @@ def process_input(prompt, agent, client, mode):
          if st.button("Restart Interview"):
              del st.session_state.agent
              st.session_state.started = False
+             st.session_state.last_audio_response = None
              st.rerun()
 
 def main():
@@ -83,6 +85,7 @@ def main():
                 if role:
                     st.session_state.agent.start(role=role)
                     st.session_state.started = True
+                    st.session_state.last_audio_response = None
                     st.rerun()
                 else:
                     st.error("Please select or enter a role.")
@@ -90,6 +93,7 @@ def main():
             if st.button("Reset Interview"):
                 del st.session_state.agent
                 st.session_state.started = False
+                st.session_state.last_audio_response = None
                 st.rerun()
 
     agent = st.session_state.agent
@@ -101,63 +105,32 @@ def main():
 
     display_chat_history()
 
+    # Play last audio response if available
+    if st.session_state.get("last_audio_response"):
+        st.audio(st.session_state.last_audio_response, autoplay=True)
+
     # Input Handling
     if mode == "Chat":
         if prompt := st.chat_input("Type your response here..."):
             process_input(prompt, agent, client, mode)
+            # Force rerun to update UI and play audio if any
+            st.rerun()
 
     elif mode == "Voice":
         # Using st.audio_input (requires Streamlit >= 1.39)
         audio_value = st.audio_input("Record your answer")
 
         if audio_value:
-            # Check if we already processed this specific audio input
-            # st.audio_input value persists until cleared.
-            # We need to check if it's new.
-            # A simple way is to check if the last message from user matches the transcription?
-            # Or store a hash.
-            # For now, let's assume Streamlit handles the rerun loop.
+            current_audio_bytes = audio_value.getvalue()
 
-            # But wait, st.audio_input triggers rerun.
-            # We need to ensure we don't re-process indefinitely.
-            # But `process_input` appends to history, so next time we check history?
-            # No, we need to transcribe first.
+            if st.session_state.get("processed_audio") != current_audio_bytes:
+                with st.spinner("Transcribing..."):
+                     transcription = client.transcribe_audio(audio_value)
 
-            with st.spinner("Transcribing..."):
-                 transcription = client.transcribe_audio(audio_value)
-
-            if transcription:
-                # Check if this transcription is already the last user message to avoid loops?
-                # Actually, `process_input` will append it.
-                # But `audio_value` stays in widget state.
-                # We need to know if we just processed it.
-
-                # Let's use a session state flag for 'last_audio_processed'
-                if "last_audio_id" not in st.session_state:
-                    st.session_state.last_audio_id = None
-
-                # audio_value is a BytesIO, we can't easily ID it unless we hash it or assume change.
-                # Streamlit reruns when input changes.
-                # If we haven't processed this input yet...
-
-                # Actually, simple fix: check if transcription == last user message?
-                # No, user might say same thing twice.
-
-                # Let's rely on the fact that we are in a rerun caused by the input.
-                # But we need to not re-run logic on subsequent reruns (e.g. other interactions).
-
-                # Currently, if I speak, it reruns. I process.
-                # Then if I click a button or something, it reruns again with same audio_value?
-                # Yes.
-
-                # So we must store the audio buffer or something to compare.
-
-                current_audio_bytes = audio_value.getvalue()
-
-                if st.session_state.get("processed_audio") != current_audio_bytes:
+                if transcription:
                     process_input(transcription, agent, client, mode)
                     st.session_state.processed_audio = current_audio_bytes
-                    st.rerun() # Rerun to update history display cleanly
+                    st.rerun() # Rerun to update history display cleanly and play audio
 
 if __name__ == "__main__":
     main()
