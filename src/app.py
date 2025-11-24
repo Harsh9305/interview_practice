@@ -5,12 +5,19 @@ from agent import InterviewAgent, InterviewStage
 
 def initialize_session_state():
     if "agent" not in st.session_state:
-        # Check API Key
+        # Check API Keys
         api_key = os.getenv("OPENAI_API_KEY")
+        gemini_key = os.getenv("GEMINI_API_KEY")
         mock_mode = False
+
         if not api_key:
-            st.sidebar.warning("No OPENAI_API_KEY found. Running in Mock Mode.")
-            mock_mode = True
+            if gemini_key:
+                 st.sidebar.success("Using Gemini API.")
+            else:
+                 st.sidebar.warning("No API Keys found. Running in Mock Mode.")
+                 mock_mode = True
+        elif api_key and gemini_key:
+             st.sidebar.info("Using OpenAI (Fallback to Gemini available).")
 
         client = LLMClient(api_key=api_key, mock=mock_mode)
         st.session_state.client = client # Store client separately for audio functions
@@ -34,6 +41,10 @@ def process_input(prompt, agent, client, mode):
     # Get response from agent
     with st.spinner("Thinking..."):
         response = agent.process_input(prompt)
+
+        # Check if response indicates fallback
+        if "Quota exceeded" in response or "mock transcription" in response:
+            st.toast("⚠️ API Quota exceeded. Switched to Mock Mode.", icon="⚠️")
 
     # Display assistant message
     with st.chat_message("assistant"):

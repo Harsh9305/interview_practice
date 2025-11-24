@@ -1,64 +1,160 @@
 import os
+import google.generativeai as genai
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from gtts import gTTS
 import tempfile
+import pathlib
 
 load_dotenv()
 
 class LLMClient:
     def __init__(self, api_key: Optional[str] = None, mock: bool = False):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
         self.mock = mock
         self.client = None
+        self.gemini_configured = False
 
+        # Configure OpenAI
         if not self.mock and self.api_key:
             self.client = OpenAI(api_key=self.api_key)
 
-        if not self.api_key and not self.mock:
-            print("Warning: No API Key found. Switch to mock mode or provide key.")
+        # Configure Gemini
+        if self.gemini_key:
+            try:
+                genai.configure(api_key=self.gemini_key)
+                self.gemini_configured = True
+            except Exception as e:
+                print(f"Failed to configure Gemini: {e}")
+
+        if not self.api_key and not self.gemini_configured and not self.mock:
+            print("Warning: No API Keys found. Switch to mock mode or provide key.")
             self.mock = True
 
     def get_response(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
         """
-        Get a response from the LLM or a mock response.
+        Get a response from the LLM (OpenAI -> Gemini -> Mock).
         messages: list of dicts with 'role' and 'content'
         """
         if self.mock:
             return self._get_mock_response(messages)
 
+        # Try OpenAI
+        if self.client:
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    temperature=temperature,
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                # If quota error or other critical error, try Gemini
+                print(f"OpenAI Error: {e}. Attempting fallback...")
+                pass # Proceed to Gemini fallback logic
+
+        # Try Gemini
+        if self.gemini_configured:
+            return self._get_gemini_response(messages)
+
+        # Fallback to Mock
+        print("All LLMs failed or not configured. Using Mock.")
+        return self._get_mock_response(messages)
+
+    def _get_gemini_response(self, messages: List[Dict[str, str]]) -> str:
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o", # Default to a strong model
-                messages=messages,
-                temperature=temperature,
-            )
-            return response.choices[0].message.content
+            model = genai.GenerativeModel('gemini-1.5-flash')
+
+            # Convert OpenAI-style messages to Gemini chat history
+            # Gemini expects history as list of Content objects, but simple string concatenation
+            # or chat session handling is easier.
+            # Let's use simple generation with context for now to avoid state mismatch issues.
+
+            # Construct a prompt from messages
+            prompt_text = ""
+            for msg in messages:
+                role = msg['role']
+                content = msg['content']
+                if role == "system":
+                    prompt_text += f"System: {content}\n"
+                elif role == "user":
+                    prompt_text += f"User: {content}\n"
+                elif role == "assistant":
+                    prompt_text += f"Assistant: {content}\n"
+
+            prompt_text += "Assistant: "
+
+            response = model.generate_content(prompt_text)
+            return response.text
         except Exception as e:
-            return f"Error communicating with LLM: {str(e)}"
+            print(f"Gemini Error: {e}")
+            return self._get_mock_response(messages)
 
     def transcribe_audio(self, audio_file) -> str:
         """
-        Transcribes audio file to text using OpenAI Whisper or Mock.
+        Transcribes audio file to text using OpenAI Whisper -> Gemini -> Mock.
         audio_file: file-like object or path
         """
         if self.mock:
             return "This is a mock transcription of the audio."
 
+        # Try OpenAI Whisper
+        if self.client:
+            try:
+                transcription = self.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+                return transcription.text
+            except Exception as e:
+                print(f"OpenAI Whisper Error: {e}. Attempting fallback...")
+
+        # Try Gemini
+        if self.gemini_configured:
+            return self._transcribe_audio_gemini(audio_file)
+
+        return "This is a mock transcription because API quotas were exceeded or keys missing."
+
+    def _transcribe_audio_gemini(self, audio_file) -> str:
         try:
-            transcription = self.client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file
-            )
-            return transcription.text
+            model = genai.GenerativeModel('gemini-1.5-flash')
+
+            # audio_file might be a BytesIO or a path
+            if hasattr(audio_file, 'read'):
+                # It's a file-like object (BytesIO)
+                # Reset pointer in case OpenAI client moved it
+                if hasattr(audio_file, 'seek'):
+                     audio_file.seek(0)
+                audio_data = audio_file.read()
+            else:
+                # Assume path
+                with open(audio_file, 'rb') as f:
+                    audio_data = f.read()
+
+            # Gemini expects mime_type. Streamlit audio input usually records as wav or user uploaded.
+            # st.audio_input returns 'audio/wav' usually.
+            # We can try generic 'audio/mp3' or 'audio/wav'.
+
+            response = model.generate_content([
+                "Transcribe the following audio accurately.",
+                {
+                    "mime_type": "audio/wav", # Assuming WAV from st.audio_input
+                    "data": audio_data
+                }
+            ])
+            return response.text
         except Exception as e:
-            return f"Error transcribing audio: {str(e)}"
+             print(f"Gemini Transcription Error: {e}")
+             return "Error using Gemini for transcription."
 
     def text_to_speech(self, text: str) -> str:
         """
         Converts text to speech. Returns path to the audio file.
         Uses OpenAI TTS if available, otherwise gTTS.
+        Gemini doesn't support TTS directly in this SDK version easily as OpenAI does.
+        So we fallback to gTTS directly if OpenAI fails.
         """
         try:
             # Create a temp file
@@ -92,16 +188,6 @@ class LLMClient:
         Generate a mock response based on the last user message.
         This is for testing without an API key.
         """
-        # When extracting role, the last message is actually the system prompt asking for clarification/confirmation,
-        # but we need to look at the user message before that to know the role.
-        # Or better, just look at the whole conversation history for keywords.
-
-        # For simplicity in this mock, we concatenate all user messages or look for key terms in the last user input.
-
-        # In Agent._handle_role_selection, it appends a system message at the end asking to confirm role.
-        # So messages[-1] is that system message.
-        # messages[-2] is the user input (if history order is preserved as expected).
-
         user_inputs = [m['content'].lower() for m in messages if m['role'] == 'user']
         last_user_input = user_inputs[-1] if user_inputs else ""
 
