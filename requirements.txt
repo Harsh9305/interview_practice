@@ -1,5 +1,5 @@
 openai
-rich
 python-dotenv
-streamlit
+streamlit>=1.39.0
 gTTS
+google-generativeai

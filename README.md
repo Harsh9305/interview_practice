@@ -31,10 +31,29 @@ An AI agent designed to help users prepare for job interviews by conducting mock
 
 ## Usage
 
-1.  Set your OpenAI API Key (optional, defaults to Mock mode if missing):
+1.  Set your API Keys (optional). The app checks for OpenAI first, then falls back to Gemini if configured, and finally Mock mode.
+
+    Create a `.env` file in the project root or export variables:
     ```bash
-    export OPENAI_API_KEY="your-api-key"
+    export OPENAI_API_KEY="your-openai-key"
+    export GEMINI_API_KEY="your-gemini-key"
     ```
+
+    *Windows (Command Prompt):*
+    ```cmd
+    set OPENAI_API_KEY=your-openai-key
+    set GEMINI_API_KEY=your-gemini-key
+    ```
+
+    *Windows (PowerShell):*
+    ```powershell
+    $env:OPENAI_API_KEY="your-openai-key"
+    $env:GEMINI_API_KEY="your-gemini-key"
+    ```
+
+    *   **OpenAI**: Used for GPT-4o and Whisper.
+    *   **Gemini**: Used as a fallback if OpenAI quota is exceeded or key is missing.
+
 2.  Run the application:
     ```bash
     streamlit run src/app.py
