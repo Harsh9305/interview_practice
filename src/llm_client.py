@@ -35,6 +35,9 @@ class LLMClient:
             else:
                  print("Warning: google-generativeai package not found. Install it to use Gemini.")
 
+        # Track last Gemini error for UI feedback
+        self.last_gemini_error = None
+
         if not self.api_key and not self.gemini_configured and not self.mock:
             print("Warning: No API Keys found. Switch to mock mode or provide key.")
             self.mock = True
@@ -70,6 +73,7 @@ class LLMClient:
         return self._get_mock_response(messages)
 
     def _get_gemini_response(self, messages: List[Dict[str, str]]) -> str:
+        self.last_gemini_error = None
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
 
@@ -96,6 +100,8 @@ class LLMClient:
             return response.text
         except Exception as e:
             print(f"Gemini Error: {e}")
+            if "API_KEY_INVALID" in str(e) or "API key not valid" in str(e):
+                self.last_gemini_error = "Gemini API Key is invalid."
             return self._get_mock_response(messages)
 
     def transcribe_audio(self, audio_file) -> str:
@@ -126,6 +132,7 @@ class LLMClient:
         return None # Return None to indicate failure
 
     def _transcribe_audio_gemini(self, audio_file) -> Optional[str]:
+        self.last_gemini_error = None
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
 
@@ -155,7 +162,9 @@ class LLMClient:
             return response.text
         except Exception as e:
              print(f"Gemini Transcription Error: {e}")
-             return "Error using Gemini for transcription."
+             if "API_KEY_INVALID" in str(e) or "API key not valid" in str(e):
+                self.last_gemini_error = "Gemini API Key is invalid."
+             return None
 
     def text_to_speech(self, text: str) -> str:
         """
@@ -166,8 +175,11 @@ class LLMClient:
         """
         try:
             # Create a temp file
+            # On Windows, we must close the file before opening it again for writing by external libs
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
                 output_path = fp.name
+
+            # Now the file is closed, we can write to it by path
 
             if not self.mock and self.client:
                 try:

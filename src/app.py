@@ -1,5 +1,9 @@
 import streamlit as st
 import os
+import warnings
+# Suppress Google API warning about Python 3.10
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.api_core")
+
 from llm_client import LLMClient
 from agent import InterviewAgent, InterviewStage
 
@@ -49,6 +53,10 @@ def process_input(prompt, agent, client, mode):
         if "Quota exceeded" in response or "mock transcription" in response:
             st.toast("⚠️ API Quota exceeded. Switched to Mock Mode.", icon="⚠️")
 
+        # Check specifically for Gemini Error
+        if hasattr(client, 'last_gemini_error') and client.last_gemini_error:
+            st.error(f"⚠️ {client.last_gemini_error} Please check your .env file.")
+
     # Display assistant message
     with st.chat_message("assistant"):
         st.markdown(response)
@@ -61,13 +69,9 @@ def process_input(prompt, agent, client, mode):
                      st.session_state.last_audio_response = audio_path
 
     # Check if finished
-    if agent.stage == InterviewStage.FINISHED:
-         st.success("Interview Finished! Review the feedback above.")
-         if st.button("Restart Interview"):
-             del st.session_state.agent
-             st.session_state.started = False
-             st.session_state.last_audio_response = None
-             st.rerun()
+    # We don't render buttons here because this runs inside the processing loop
+    # and will be wiped on rerun. We handle the finished state in the main loop.
+    pass
 
 def main():
     st.set_page_config(page_title="Interview Practice Partner", page_icon="👔")
@@ -123,6 +127,16 @@ def main():
     if st.session_state.get("last_audio_response"):
         st.audio(st.session_state.last_audio_response, autoplay=True)
 
+    # Check if finished to display feedback controls outside the processing loop
+    if agent.stage == InterviewStage.FINISHED:
+         st.success("Interview Finished! Review the feedback above.")
+         if st.button("Restart Interview", key="restart_main"):
+             del st.session_state.agent
+             st.session_state.started = False
+             st.session_state.last_audio_response = None
+             st.rerun()
+         return # Stop input handling if finished
+
     # Input Handling
     if mode == "Chat":
         if prompt := st.chat_input("Type your response here..."):
@@ -146,7 +160,10 @@ def main():
                     st.session_state.processed_audio = current_audio_bytes
                     st.rerun() # Rerun to update history display cleanly and play audio
                 else:
-                    st.error("Transcription failed. Please try again or check your API keys.")
+                    if hasattr(client, 'last_gemini_error') and client.last_gemini_error:
+                        st.error(f"Transcription failed: {client.last_gemini_error}")
+                    else:
+                        st.error("Transcription failed. Please try again or check your API keys.")
                     # Mark as processed to prevent infinite retry loop on the same audio
                     st.session_state.processed_audio = current_audio_bytes
 
