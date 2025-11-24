@@ -16,8 +16,11 @@ def initialize_session_state():
             else:
                  st.sidebar.warning("No API Keys found. Running in Mock Mode.")
                  mock_mode = True
-        elif api_key and gemini_key:
-             st.sidebar.info("Using OpenAI (Fallback to Gemini available).")
+        elif api_key:
+             if gemini_key:
+                 st.sidebar.info("Using OpenAI (Fallback to Gemini available).")
+             else:
+                 st.sidebar.info("Using OpenAI.")
 
         client = LLMClient(api_key=api_key, mock=mock_mode)
         st.session_state.client = client # Store client separately for audio functions
@@ -142,6 +145,10 @@ def main():
                     process_input(transcription, agent, client, mode)
                     st.session_state.processed_audio = current_audio_bytes
                     st.rerun() # Rerun to update history display cleanly and play audio
+                else:
+                    st.error("Transcription failed. Please try again or check your API keys.")
+                    # Mark as processed to prevent infinite retry loop on the same audio
+                    st.session_state.processed_audio = current_audio_bytes
 
 if __name__ == "__main__":
     main()

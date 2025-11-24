@@ -1,5 +1,8 @@
 import os
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -23,11 +26,14 @@ class LLMClient:
 
         # Configure Gemini
         if self.gemini_key:
-            try:
-                genai.configure(api_key=self.gemini_key)
-                self.gemini_configured = True
-            except Exception as e:
-                print(f"Failed to configure Gemini: {e}")
+            if genai:
+                try:
+                    genai.configure(api_key=self.gemini_key)
+                    self.gemini_configured = True
+                except Exception as e:
+                    print(f"Failed to configure Gemini: {e}")
+            else:
+                 print("Warning: google-generativeai package not found. Install it to use Gemini.")
 
         if not self.api_key and not self.gemini_configured and not self.mock:
             print("Warning: No API Keys found. Switch to mock mode or provide key.")
@@ -113,11 +119,13 @@ class LLMClient:
 
         # Try Gemini
         if self.gemini_configured:
-            return self._transcribe_audio_gemini(audio_file)
+            result = self._transcribe_audio_gemini(audio_file)
+            if result:
+                return result
 
-        return "This is a mock transcription because API quotas were exceeded or keys missing."
+        return None # Return None to indicate failure
 
-    def _transcribe_audio_gemini(self, audio_file) -> str:
+    def _transcribe_audio_gemini(self, audio_file) -> Optional[str]:
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
 
