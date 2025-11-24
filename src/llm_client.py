@@ -74,35 +74,47 @@ class LLMClient:
 
     def _get_gemini_response(self, messages: List[Dict[str, str]]) -> str:
         self.last_gemini_error = None
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
 
-            # Convert OpenAI-style messages to Gemini chat history
-            # Gemini expects history as list of Content objects, but simple string concatenation
-            # or chat session handling is easier.
-            # Let's use simple generation with context for now to avoid state mismatch issues.
+        # Try primary model then fallback
+        models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
 
-            # Construct a prompt from messages
-            prompt_text = ""
-            for msg in messages:
-                role = msg['role']
-                content = msg['content']
-                if role == "system":
-                    prompt_text += f"System: {content}\n"
-                elif role == "user":
-                    prompt_text += f"User: {content}\n"
-                elif role == "assistant":
-                    prompt_text += f"Assistant: {content}\n"
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name)
 
-            prompt_text += "Assistant: "
+                # Construct a prompt from messages
+                prompt_text = ""
+                for msg in messages:
+                    role = msg['role']
+                    content = msg['content']
+                    if role == "system":
+                        prompt_text += f"System: {content}\n"
+                    elif role == "user":
+                        prompt_text += f"User: {content}\n"
+                    elif role == "assistant":
+                        prompt_text += f"Assistant: {content}\n"
 
-            response = model.generate_content(prompt_text)
-            return response.text
-        except Exception as e:
-            print(f"Gemini Error: {e}")
-            if "API_KEY_INVALID" in str(e) or "API key not valid" in str(e):
-                self.last_gemini_error = "Gemini API Key is invalid."
-            return self._get_mock_response(messages)
+                prompt_text += "Assistant: "
+
+                response = model.generate_content(prompt_text)
+                return response.text
+            except Exception as e:
+                print(f"Gemini Error ({model_name}): {e}")
+                error_str = str(e)
+                if "API_KEY_INVALID" in error_str or "API key not valid" in error_str:
+                    self.last_gemini_error = "Gemini API Key is invalid."
+                    # If key is invalid, no model will work, break loop
+                    break
+
+                # If 404/not found, loop to next model
+                if "404" in error_str or "not found" in error_str:
+                    continue
+
+                # For other errors, maybe try next model?
+                continue
+
+        # If all failed
+        return self._get_mock_response(messages)
 
     def transcribe_audio(self, audio_file) -> str:
         """
@@ -133,38 +145,49 @@ class LLMClient:
 
     def _transcribe_audio_gemini(self, audio_file) -> Optional[str]:
         self.last_gemini_error = None
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
 
+        # Models that support audio
+        models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro']
+
+        # Prepare audio data once
+        try:
             # audio_file might be a BytesIO or a path
             if hasattr(audio_file, 'read'):
-                # It's a file-like object (BytesIO)
-                # Reset pointer in case OpenAI client moved it
                 if hasattr(audio_file, 'seek'):
                      audio_file.seek(0)
                 audio_data = audio_file.read()
             else:
-                # Assume path
                 with open(audio_file, 'rb') as f:
                     audio_data = f.read()
-
-            # Gemini expects mime_type. Streamlit audio input usually records as wav or user uploaded.
-            # st.audio_input returns 'audio/wav' usually.
-            # We can try generic 'audio/mp3' or 'audio/wav'.
-
-            response = model.generate_content([
-                "Transcribe the following audio accurately.",
-                {
-                    "mime_type": "audio/wav", # Assuming WAV from st.audio_input
-                    "data": audio_data
-                }
-            ])
-            return response.text
         except Exception as e:
-             print(f"Gemini Transcription Error: {e}")
-             if "API_KEY_INVALID" in str(e) or "API key not valid" in str(e):
-                self.last_gemini_error = "Gemini API Key is invalid."
-             return None
+            print(f"Error reading audio file: {e}")
+            return None
+
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name)
+
+                response = model.generate_content([
+                    "Transcribe the following audio accurately.",
+                    {
+                        "mime_type": "audio/wav",
+                        "data": audio_data
+                    }
+                ])
+                return response.text
+            except Exception as e:
+                 print(f"Gemini Transcription Error ({model_name}): {e}")
+                 error_str = str(e)
+                 if "API_KEY_INVALID" in error_str or "API key not valid" in error_str:
+                    self.last_gemini_error = "Gemini API Key is invalid."
+                    return None
+
+                 if "404" in error_str or "not found" in error_str:
+                     continue
+
+                 continue
+
+        return None
 
     def text_to_speech(self, text: str) -> str:
         """
