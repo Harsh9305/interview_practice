@@ -119,11 +119,13 @@ class LLMClient:
 
         # Try Gemini
         if self.gemini_configured:
-            return self._transcribe_audio_gemini(audio_file)
+            result = self._transcribe_audio_gemini(audio_file)
+            if result:
+                return result
 
-        return "This is a mock transcription because API quotas were exceeded or keys missing."
+        return None # Return None to indicate failure
 
-    def _transcribe_audio_gemini(self, audio_file) -> str:
+    def _transcribe_audio_gemini(self, audio_file) -> Optional[str]:
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
 

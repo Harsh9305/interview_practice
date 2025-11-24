@@ -23,9 +23,17 @@ class TestLLMClientFallback(unittest.TestCase):
         client.client = MagicMock()
         client.client.audio.transcriptions.create.side_effect = Exception("Error code: 429 - insufficient_quota")
 
-        response = client.transcribe_audio("fake_audio_file")
+        # This will return None because we haven't configured Gemini or Mock mode fallback for this specific test case setup
+        # in the new logic (it returns None on failure instead of mock string if keys are present but fail).
+        # Actually, in transcribe_audio, if client exists, it tries OpenAI. If 429, it catches.
+        # Then it checks `if self.gemini_configured`.
+        # In this test, gemini is not configured.
+        # So it falls through to `return None` (implied or explicit depending on implementation).
+        # Wait, let's check `src/llm_client.py`.
 
-        self.assertIn("mock transcription", response)
+        # It returns None.
+        response = client.transcribe_audio("fake_audio_file")
+        self.assertIsNone(response)
 
 if __name__ == '__main__':
     unittest.main()
